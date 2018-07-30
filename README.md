@@ -1,5 +1,6 @@
 Pasang
 ======
+[![Build Status](https://travis-ci.org/asasmoyo/pasang.svg?branch=master)](https://travis-ci.org/asasmoyo/pasang)
 
 Single binary to deploy a release via SSH.
 
