@@ -1,12 +1,11 @@
 language: go
 go:
-- '1.8'
-- '1.9'
-- '1.10'
-- master
+- '1.8.x'
+- '1.9.x'
+- '1.10.x'
 install:
 - go get github.com/golang/dep
-- dep ensure
+- $GOPATH/bin/dep ensure
 script:
 - make dist
 deploy:
