@@ -1,0 +1,23 @@
+language: go
+go:
+- '1.9.x'
+- '1.10.x'
+install:
+- go get github.com/golang/dep/cmd/dep
+- dep ensure
+script:
+- make dist
+deploy:
+  skip_cleanup: true
+  provider: releases
+  api_key:
+    secure: Ok8LQMToox3mNT9Uq5adzACYzeof9VAXaRQWCst3RHiGu01a85lj5kek946rM5Yxwgdlzhvp2GLnMZxGtWZ9y1bPRRZRz2rmHy6jagGKmbM49laziUBP6VqF3pO0AhCMbTGCpUeKbimO9KRUT0jlffCmfMp+utD0Utw7yqJMajTsS5/S6+qfragyd3A/PdtWQtrgstCYkPyWSE/c9093x7LzM+Eajj6jnB4G0CBhW8kbECCrEqnH208IvpvuoHLjm1RPhu/TYI4R8C9SJMj30bpT7r/VaQExuulQwkQfE+ToH6frwhKPgS7LIbUdY/8jXr0GMl7N/K1ifOIEowvd51MzmP63xyu3ZhozXSkRM6wwA/Vk4qMGl00VYbHnkbMHzhxl0R+0+0zY9I2eEtwvpef0rxVs//a7T/LJ/cQtjPGE264ArfXBxErqi1rf26EKaq7uCgcr8wk4vJLZZ2DA0OI75jg9b8KnT52ipw3dVLV4/2XaNwzg4Js20yuZnDvtifP568EwSjgisoi29cSScyp6uKCvxY1lv1ARRsbQfshe5d26TCWtgymdZR1mMhP9p9fO8GcihfsAAFV6Te6pwsnWZ6pZfJxgGwLb+NQ2F98UePFd0wdQDYqk2aXI/dPUecsU052vK1AXuWV8xgGmHxehd53Ohl7uuQhBhVILrJQ=
+  file:
+    - dist/pasang-linux_amd64
+    - dist/pasang-linux_i386
+    - dist/pasang-mac_amd64
+    - dist/pasang-mac_i386
+  on:
+    repo: asasmoyo/pasang
+    tags: true
+    condition: $TRAVIS_GO_VERSION =~ ^1\.10.*$
