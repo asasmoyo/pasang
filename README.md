@@ -32,7 +32,7 @@ If `local` flag is present, this tool deploys `src` to `dest` in the same machin
 # Limitation
 
 1. SSH host key check is ignored.
-1. Complex `dest`, eg: `~/deploy`, may not be supported. Please use absolute path for now.
+1. Complex path in `dest`, eg: `user@host:port:~/deploy`, may not be supported. Please use absolute path for now.
 
 # Licence
 
