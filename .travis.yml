@@ -4,8 +4,8 @@ go:
 - '1.9.x'
 - '1.10.x'
 install:
-- go get github.com/golang/dep
-- $GOPATH/bin/dep ensure
+- go get github.com/golang/dep/cmd/dep
+- dep ensure
 script:
 - make dist
 deploy:
