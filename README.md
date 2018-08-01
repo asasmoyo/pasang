@@ -4,6 +4,12 @@ Pasang
 
 Single binary to deploy a release via SSH.
 
+# Installation
+
+You can download pre-built binary in [release page](https://github.com/asasmoyo/pasang/releases/latest).
+
+You can also download and build it for yourself using `go get github.com/asasmoyo/pasang`.
+
 # Usage
 
 ```
