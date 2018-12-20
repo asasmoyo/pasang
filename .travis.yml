@@ -1,10 +1,7 @@
 language: go
 go:
-- '1.9.x'
 - '1.10.x'
-install:
-- go get github.com/golang/dep/cmd/dep
-- dep ensure
+- '1.11.x'
 script:
 - make dist
 deploy:
@@ -20,4 +17,4 @@ deploy:
   on:
     repo: asasmoyo/pasang
     tags: true
-    condition: $TRAVIS_GO_VERSION =~ ^1\.10.*$
+    condition: $TRAVIS_GO_VERSION =~ ^1\.11.*$
