@@ -4,6 +4,8 @@ go:
 script:
 - go mod download
 - make dist
+env:
+- GO111MODULE=on
 deploy:
   skip_cleanup: true
   provider: releases
