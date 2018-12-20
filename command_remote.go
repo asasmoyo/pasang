@@ -12,73 +12,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/otiai10/copy"
-	werrors "github.com/pkg/errors"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
-func executeLocal(src, dest string, keep int) error {
-	info, err := os.Stat(src)
-	if err != nil {
-		return werrors.Wrap(err, "open src")
-	}
-
-	releaseDir := filepath.Join(dest, "releases")
-	if err := os.MkdirAll(releaseDir, info.Mode()); err != nil {
-		return werrors.Wrap(err, "releases dir")
-	}
-
-	target := filepath.Join(dest, "releases", fmt.Sprintf("%d", time.Now().Unix()))
-	if err := copy.Copy(src, target); err != nil {
-		return werrors.Wrap(err, "local copy")
-	}
-
-	err = deleteOldReleases(filepath.Join(dest, "releases"), keep)
-	if err != nil {
-		return werrors.Wrap(err, "local old releases")
-	}
-
-	err = symlinkLocal(filepath.Join(dest, "current"), target)
-	if err != nil {
-		return werrors.Wrap(err, "symlink local")
-	}
-	return nil
-}
-
-func deleteOldReleases(dir string, keep int) error {
-	infos, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	var dirs []string
-	for _, info := range infos {
-		dirs = append(dirs, filepath.Join(dir, info.Name()))
-	}
-	sort.Strings(dirs)
-	for i := 0; len(dirs) > keep+i; i++ {
-		log.Printf("deleting old release: %s\n", dirs[i])
-		if err := os.RemoveAll(dirs[i]); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func symlinkLocal(target, source string) error {
-	os.Remove(target)
-	return os.Symlink(source, target)
-}
-
-func executeSSH(src, dest string, keep int, auth *sshAuth) error {
-	var user, addr, destDir string
-	parts := strings.Split(dest, "@")
+func executeRemote(conf config) error {
+	parts := strings.Split(conf.Dest, "@")
 	if len(parts) != 2 {
 		return errors.New("invalid dest value")
 	}
-	user = parts[0]
-
+	user := parts[0]
 	parts = strings.Split(parts[1], ":")
+
+	var addr, destDir string
 	if len(parts) == 2 {
 		addr = parts[0] + ":22"
 		destDir = parts[1]
@@ -89,58 +35,67 @@ func executeSSH(src, dest string, keep int, auth *sshAuth) error {
 		return errors.New("invalid dest value")
 	}
 
-	client, err := createSSHClient(user, addr, auth)
+	if err := executeLocalCmd(conf.Source, conf.BeforeRunCmd); err != nil {
+		return errors.New("before run commands return non 0 exit code")
+	}
+
+	client, err := createSSHClient(
+		user, addr,
+		conf.SSHPassword, conf.SSHPrivateKey, conf.SSHSecretKey,
+	)
 	if err != nil {
-		return werrors.Wrap(err, "ssh client")
+		return errors.New("failed to create connection to remote machine")
 	}
 	defer client.Close()
+
 	sftpClient, err := sftp.NewClient(client)
 	if err != nil {
-		return werrors.Wrap(err, "sftp client")
+		return errors.New("failed to create connection to remote machine")
 	}
 	defer sftpClient.Close()
 
-	// make sure releases dir exists
 	releaseDir := filepath.Join(destDir, "releases")
 	if err := sftpClient.MkdirAll(releaseDir); err != nil {
-		return werrors.Wrap(err, "sftp releases dir")
+		return errors.New("failed to create release folder in remote machine")
 	}
 
-	info, err := os.Stat(src)
-	if err != nil {
-		return werrors.Wrap(err, "open src")
-	}
-	target := filepath.Join(releaseDir, fmt.Sprintf("%d", time.Now().Unix()))
-	if err := copySFTP(sftpClient, src, target, info); err != nil {
-		return werrors.Wrap(err, "sftp copy")
+	log.Println("copying source files to remote machine")
+	info, err := os.Stat(conf.Source)
+	targetDir := filepath.Join(releaseDir, fmt.Sprintf("%d", time.Now().Unix()))
+	if err := copySFTP(sftpClient, conf.Source, targetDir, info); err != nil {
+		return errors.New("failed to copy source files to remote machine")
 	}
 
-	err = deleteOldReleasesSFTP(sftpClient, releaseDir, keep)
-	if err != nil {
-		return werrors.Wrap(err, "old release sftp")
+	if err := executeRemoteCmd(client, targetDir, conf.AfterRunCmd); err != nil {
+		return errors.New("executing after commands in remote machine returning non 0 exit code")
 	}
 
-	err = symlinkReleaseSFTP(sftpClient, filepath.Join(destDir, "current"), target)
+	err = deleteOldReleasesSFTP(sftpClient, releaseDir, conf.Keep)
 	if err != nil {
-		return werrors.Wrap(err, "symlink sftp")
+		return errors.New("failed to remove old releases")
+	}
+
+	err = symlinkReleaseSFTP(sftpClient, filepath.Join(destDir, "current"), targetDir)
+	if err != nil {
+		return errors.New("failed to link release folder")
 	}
 	return nil
 }
 
-func createSSHClient(user, addr string, auth *sshAuth) (*ssh.Client, error) {
+func createSSHClient(user, addr string, sshPassword, sshPrivateKey, sshSecretKey string) (*ssh.Client, error) {
 	var authMethod ssh.AuthMethod
-	if len(auth.PrivKey) > 0 {
-		key, err := ioutil.ReadFile(auth.PrivKey)
+	if len(sshPrivateKey) > 0 {
+		key, err := ioutil.ReadFile(sshPrivateKey)
 		if err != nil {
-			return nil, err
+			return nil, errors.New("can't read ssh private key")
 		}
 
 		var signer ssh.Signer
-		if len(auth.KeySecret) > 0 {
+		if len(sshSecretKey) > 0 {
 			var err error
-			signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(auth.KeySecret))
+			signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(sshSecretKey))
 			if err != nil {
-				return nil, err
+				return nil, errors.New("invalid ssh secret key")
 			}
 		} else {
 			var err error
@@ -151,7 +106,7 @@ func createSSHClient(user, addr string, auth *sshAuth) (*ssh.Client, error) {
 		}
 		authMethod = ssh.PublicKeys(signer)
 	} else {
-		authMethod = ssh.Password(auth.Password)
+		authMethod = ssh.Password(sshPassword)
 	}
 	config := &ssh.ClientConfig{
 		User: user,
@@ -164,6 +119,7 @@ func createSSHClient(user, addr string, auth *sshAuth) (*ssh.Client, error) {
 }
 
 func copySFTP(client *sftp.Client, src, dest string, info os.FileInfo) error {
+	log.Printf("copying %s to %s\n", src, dest)
 	if info.IsDir() {
 		return dcopySFTP(client, src, dest, info)
 	}
@@ -173,7 +129,6 @@ func copySFTP(client *sftp.Client, src, dest string, info os.FileInfo) error {
 func fcopySFTP(client *sftp.Client, src, dest string, info os.FileInfo) error {
 	f, err := client.Create(dest)
 	if err != nil {
-		fmt.Println(src, dest)
 		return err
 	}
 	defer f.Close()
@@ -261,4 +216,28 @@ func removeAllSFTP(client *sftp.Client, path string) error {
 func symlinkReleaseSFTP(client *sftp.Client, target, source string) error {
 	client.Remove(target)
 	return client.Symlink(source, target)
+}
+
+func executeRemoteCmd(client *ssh.Client, dir string, cmds []string) error {
+	if len(cmds) == 0 {
+		return nil
+	}
+
+	for _, cmd := range cmds {
+		session, err := client.NewSession()
+		if err != nil {
+			return errors.New("failed to create ssh session")
+		}
+
+		log.Printf("executing remote command \"%s\" at %s\n", cmd, dir)
+		out, err := session.CombinedOutput(cmd)
+		log.Println(string(out))
+		if err != nil {
+			return err
+		}
+
+		session.Close()
+	}
+
+	return nil
 }
